@@ -1,0 +1,9 @@
+[submodule "DS3231M"]
+	path = DS3231M
+	url = https://github.com/SV-Zanshin/DS3231M.git
+[submodule "FastLED"]
+	path = FastLED
+	url = https://github.com/FastLED/FastLED.git
+[submodule "Arduino-Makefile"]
+	path = Arduino-Makefile
+	url = https://github.com/sudar/Arduino-Makefile.git
