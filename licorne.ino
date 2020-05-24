@@ -83,8 +83,12 @@ static bool new_state = true;
   control_state = name;
 #endif
 
-// if defined, this will set the time at startup. Used for debugging.
-#define FAKE_DATE_STARTUP "23:58:30"
+
+//#define FAKE_DATE_STARTUP "13:29:30"
+
+// Define if you want the RTC clock to be set to build time (ie. compile and
+//flash immediately)
+//#define INIT_TIME_TO_COMPILE_TIME 1
 
 // Stupid dump of DateTime object
 static const void debugDateTime(const DateTime &d)
@@ -344,6 +348,14 @@ void setup (void)
       delay (1000);
     }
 
+  DateTime now = DS3231M.now ();
+  debugDateTime (now);
+
+#ifdef INIT_TIME_TO_COMPILE_TIME
+  DateTime test (__DATE__, __TIME__);
+  DS3231M.adjust (test);
+#endif
+
 #ifdef FAKE_DATE_STARTUP
   DateTime test (__DATE__, FAKE_DATE_STARTUP);
   DS3231M.adjust (test);
@@ -369,12 +381,11 @@ void setup (void)
   elements[sizeof (elements)/sizeof (Range_element*)-1]->mnext = elements[0];
 
   // Find next range to be used
-  DateTime n = DS3231M.now ();
   current_range = elements[0];
 
   for (Range_element *e : elements)
     {
-     if (is_time_before_eq (e->mend, n))
+     if (is_time_before_eq (e->mend, now))
        continue;
      current_range = e;
      break;
