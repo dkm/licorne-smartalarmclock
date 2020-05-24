@@ -158,7 +158,6 @@ public:
   };
 
   Range_element (const DateTime &start, const DateTime &end): mstart(start), mend(end), next_alarm_is_entering(true), mnext(NULL) {};
-  Range_element (const DateTime &start, const DateTime &end, Range_element *next): mstart(start), mend(end), next_alarm_is_entering(true), mnext(next) {};
 
   bool is_in_range (void) const
   {
@@ -205,44 +204,65 @@ public:
 class Bed_element : public Range_element {
 
 public:
-  Bed_element(const DateTime &start, const DateTime &end) : Range_element(start, end) {};
+  Bed_element(const char* name, const DateTime &start, const DateTime &end, CRGB color_enter, CRGB color_exit) : Range_element(start, end), m_enter(color_enter), m_exit(color_exit), mname(name) {};
+
+  CRGB m_enter, m_exit;
+  const char* mname;
 
   void enter (void)
   {
-    dwprint("enter bed");
-    set_leds (CRGB::Pink);
+    dwprint("enter");
+    dwprint (mname);
+    set_leds (m_enter);
     Range_element::enter();
   }
 
   void in(void)
   {
-    dwprint("in bed");
+    static bool seen = false;
+    if (!seen)
+      {
+        dwprint("in");
+        dwprint (mname);
+        seen = true;
+      }
     delay (1000);
     Range_element::in();
   }
 
   void exit (void)
   {
-    dwprint("exit bed");
-    set_leds (CRGB::Green);
+    dwprint("exit");
+    dwprint (mname);
+    set_leds (m_exit);
     Range_element::exit();
   }
 };
 
-// between these, it's bed time !
-// #define START_BED_HOUR 23
-// #define START_BED_MIN 59
-// #define START_STR xstr(START_BED_HOUR) ":" xstr(START_BED_MIN) ":00"
+static const DateTime story_time_start (__DATE__, "13:30:00");
+static const DateTime story_time_end (__DATE__,  "14:00:00");
+Bed_element b0 = Bed_element ("story", story_time_start, story_time_end, CRGB::Blue, CRGB::Pink);
 
-// #define END_BED_HOUR 00
-// #define END_BED_MIN 01
-// #define END_STR xstr(END_BED_HOUR) ":" xstr(END_BED_MIN) ":00"
+static const DateTime quiet_time_start (__DATE__, "14:01:00");
+static const DateTime quiet_time_end (__DATE__,  "15:00:00");
+Bed_element b1 = Bed_element ("quiet", quiet_time_start, quiet_time_end, CRGB::Pink, CRGB::Green);
 
-static const DateTime time_to_sleep(__DATE__, "23:59:00");
-static const DateTime ok_to_get_up(__DATE__,  "00:01:00");
-Bed_element b = Bed_element (time_to_sleep, ok_to_get_up);
+static const DateTime bed_time_start (__DATE__, "20:30:00");
+static const DateTime bed_time_end (__DATE__,  "07:00:00");
+Bed_element b2 = Bed_element ("bed", bed_time_start, bed_time_end, CRGB::Pink, CRGB::Green);
 
-Range_element *elements[] = {&b};
+Range_element *elements[] = {&b0, &b1, &b2};
+
+Range_element *prev(Range_element *t)
+{
+  for (Range_element *e: elements)
+    {
+      if (e->mnext == t)
+        return e;
+    }
+  return NULL;
+}
+
 
 Range_element *current_range = elements[0];
 
@@ -253,34 +273,6 @@ void debugRangeElement(Range_element *e)
   debugDateTime (e->mend);
   dwprint ("Range element stop");
 }
-
-// bool time_to_sleep_p (void)
-// {
-//   DateTime now = DS3231M.now();
-//   bool ret = false;
-
-//   debugDateTime(now);
-//   debugDateTime(time_to_sleep);
-//   debugDateTime(ok_to_get_up);
-
-//   // [-----[SSSSSS[--------]
-//   if (is_time_before_eq (time_to_sleep, ok_to_get_up))
-//     {
-//       ret = is_time_between (time_to_sleep, now, ok_to_get_up);
-//     }
-//   // [SSSSS[----------[SSSS[]
-//   else
-//     {
-//       DateTime last(__DATE__, "23:59:59");
-//       DateTime first(__DATE__, "00:00:00");
-//       ret = is_time_between (time_to_sleep, now, last);
-//       ret |= is_time_between (first, now, ok_to_get_up);
-//     }
-
-//   dwprint("time_to_sleep: ");
-//   dwprint(ret);
-//   return ret;
-// }
 
 // switches off all LEDs
 void showProgramCleanUp(long delayTime)
@@ -294,6 +286,7 @@ void showProgramCleanUp(long delayTime)
 
 void startup_sanity_check (void)
 {
+  dwprint ("start sanity blink");
   for (int i = 0; i < NUM_LEDS; ++i)
     leds[i] = CRGB::Red;
 
@@ -304,6 +297,12 @@ void startup_sanity_check (void)
 
   FastLED.show();
 
+  // exit() will move the state, reset it.
+  prev(current_range)->exit ();
+  dwprint ("Use state for init led");
+  debugRangeElement (prev(current_range));
+  control_state = STARTUP;
+  dwprint ("end sanity blink");
   NEXT_STATE (IDLE);
 }
 
@@ -329,27 +328,6 @@ void setAlarm(uint8_t type, bool alarm_for_entering)
   DS3231M.setAlarm(type, when);
   dwprint ("end setAlarm");
 }
-
-// void sleep_leds(void)
-// {
-//   dwprint("sleep leds");
-//   for (int i = 0; i < NUM_LEDS; ++i)
-//     leds[i] = CRGB::Pink;
-
-//   FastLED.show();
-//   NEXT_STATE(IDLE);
-// }
-
-// void up_leds (void)
-// {
-//   dwprint("up leds");
-
-//   for (int i = 0; i < NUM_LEDS; ++i)
-//     leds[i] = CRGB::Green;
-
-//   FastLED.show();
-//   NEXT_STATE(IDLE);
-// }
 
 void setup (void)
 {
@@ -382,11 +360,18 @@ void setup (void)
 
   FastLED.show ();
 
+  elements[0]->mnext = elements[0];
+  for (unsigned int i=0; i < sizeof (elements)/sizeof (Range_element*)-1; i++)
+    {
+      elements[i+1]->mnext = elements[i]->mnext;
+      elements[i]->mnext = elements[i+1];
+    }
   elements[sizeof (elements)/sizeof (Range_element*)-1]->mnext = elements[0];
 
   // Find next range to be used
   DateTime n = DS3231M.now ();
   current_range = elements[0];
+
   for (Range_element *e : elements)
     {
      if (is_time_before_eq (e->mend, n))
@@ -420,6 +405,7 @@ static void control_automata (void) {
 
   case IDLE:
     STATE (IDLE);
+
     if (current_range->is_in_range ())
       {
         current_range->enter ();
